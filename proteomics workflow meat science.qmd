@@ -1,0 +1,350 @@
+---
+title: "down stream proteomics workflow for meat science"
+author: "Sudipta Hazra"
+format:
+  html:
+    code-link: true
+    # code-line-numbers: true
+    code-block-bg: true
+    code-block-border-left: "#31BAE9"
+execute:
+  cache: true
+---
+
+### Naming Idea
+
+[![](images/Summarized%20Experiment.png){fig-align="center" width="400"}](https://bioconductor.org/packages/release/bioc/vignettes/SummarizedExperiment/inst/doc/SummarizedExperiment.html)
+
+## Parameters
+
+```{r}
+# do renv::restore() and renv:activate() as global setup
+
+# Import quant_data and sample_data as parameter
+
+feature_key_column <- "Accession" # comment it later
+quantdata_key_column <- "Accession"
+sample_key_column <- "sample" # quantCols (suggested names callouts)
+
+# Instead only mention paths
+quant_data_path <- "data/quant_data.csv"
+s_data_path <- "data/sample_data.csv"
+
+# refernce for columns in sample data,
+
+treatmen1_ref <- "" # if kept empty nothing is considered as control
+treatmen2_ref <- ""
+# treatmen3_ref <- "" # keep adding as many treatments you have
+
+# imputation technique
+ imputation_algo <- "knn" #(suggest all the possible imputation but customizable): "orig", "knn", "zero", "MinDet", "bpca"
+ 
+# normalisation techniques
+normalization_algo <- "center.median" #sum, max, center.mean, center.median, div.mean, div.median, diff.median, quantiles, quantiles.robust, vsn
+```
+
+## Importing Data
+
+### Gene ID has multiple entries one cell
+
+#### Importing Raw Data
+
+```{r}
+# #| eval: false
+# 
+# pacman::p_load(tidyverse) 
+# quant_data <- read.csv("data/sample_lfq_data.csv")
+# # s_data <- read.csv("data/sample_metadata.csv") # sample_attributes
+```
+
+#### Enriching/populating the feature data
+
+```{r}
+# #| eval: false
+# 
+# # pacman::p_load(tidyverse, modules, httr, jsonlite) 
+# # multipleAccessionHandling <- use("R/01_multipleAccessionHandling.R")
+# source("R/01_multipleAccessionHandling.R")
+# 
+# 
+# f_quant_data <- getCleanAccession(quant_data, "Accession", "\\b[A-Za-z0-9]+(?=\\|)")
+# 
+# r_data <- populateGeneNamesfromMultipleAccession(f_data, "Accession", ",", information = "accession,gene_primary,gene_synonym,organism_name,protein_name,sequence", countAccession = countAccession, getGeneUniProt = getGeneUniProt, getGeneInformationforMultipleAccession = getGeneInformationforMultipleAccession, verbose_ = FALSE)
+
+```
+
+### 
+
+```{r}
+# #| eval: false
+# 
+# pacman::p_load(import, glue, httr, progress)
+# 
+# # write.csv(r_data[, c(1, 7:ncol(r_data))],"data/quant_data.csv", row.names = FALSE)
+# 
+# write.csv(r_data[, 1:6], "data/feature_data.csv", row.names = FALSE)
+```
+
+### Gene ID has single entries in cell
+
+#### Importing Raw Data
+
+```{r}
+pacman::p_load(tidyverse)
+
+quant_data <-  read.csv(quant_data_path) #%>%  # LFQ quantified data
+  # column_to_rownames(var = feature_key_column) # make the first column as row name
+
+f_data <- read.csv("data/feature_data.csv") #%>% # feature_attributes, primary key (unique) should be uniprot accession gene id
+  # column_to_rownames(var = feature_key_column)
+
+s_data <- read.csv(s_data_path) %>% 
+  mutate(across(all_of(sample_key_column), make.names)) %>%
+  # column_to_rownames(var = sample_key_column) %>% 
+  dplyr::rename(quantCols = sample_key_column)
+```
+
+## Preparing a QFeature object
+
+### Creating the QFeature object
+
+```{r}
+
+pacman::p_load(BiocManager) # will go to global environment
+pacman::p_load(QFeatures)
+
+# creating assayData
+assayData <-  f_data %>% 
+  full_join(quant_data, by = feature_key_column)
+
+# name for the assay
+initial_assayName <- "proteomics_data"
+
+# creating QFeature object
+data <- readQFeatures(
+  assayData,
+  quantCols  = (ncol(f_data)+1):ncol(assayData),
+  fnames = feature_key_column,
+  colData = s_data,
+  name = initial_assayName
+)
+
+# adding column details also for summarizedExperiment object
+colData(data[[initial_assayName]]) <- colData(data)
+```
+
+### Inspecting the QFeature Object
+
+::: panel-tabset
+##### QFeature object
+
+```{r}
+# QFeature object
+data
+```
+
+##### summarizedExperiment Object
+
+```{r}
+# summarizedExperiment Object
+data[[initial_assayName]]
+```
+
+##### row data (features) information
+
+```{r}
+# row data (features) information
+head(rowData(data[[initial_assayName]]), 3)
+```
+
+##### col data (samples) information (summarizedExperiment object)
+
+```{r}
+# col data (samples) information
+head(colData(data[[initial_assayName]]), 3) #summarizedExperiment object
+
+```
+
+##### col data (samples) information (QFeature object)
+
+```{r}
+# col data (samples) information
+head(colData(data), 3) # QFeature object
+```
+
+##### assay data
+
+```{r}
+# assay data
+head(assay(data[[initial_assayName]]), 2)
+
+```
+
+```{r}
+#| eval: false
+
+# QFeature object
+message(" QFeature object")
+data
+
+# summarizedExperiment Object
+message("\n \n summarizedExperiment Object")
+data[[initial_assayName]]
+
+# row data (features) information
+message("\n \n row data (features) information")
+head(rowData(data[[initial_assayName]]), 3)
+
+# col data (samples) information
+message("\n col data (samples) information (summarizedExperiment object)")
+head(colData(data[[initial_assayName]]), 3) #summarizedExperiment object
+
+message("\n col data (samples) information (QFeature object)")
+head(colData(data), 3) # QFeature object
+
+# assay data
+message("\n \n assay data")
+head(assay(data[[initial_assayName]]), 2)
+
+message("\n \n Warning: We are printing less rows for a better viewing using head() function.")
+```
+:::
+
+## Pre-processing of the data
+
+### Missing value Handling
+
+#### Missing value exploration and visualization
+
+::: {.panel-tabset .nav-pills}
+###### Descriptive Information
+
+```{r}
+# Exploring missing values
+data[[initial_assayName]] <- zeroIsNA(data[[initial_assayName]])
+NA_data <- nNA(data[[initial_assayName]])
+NA_data
+```
+
+###### Missing value visualization of overall data
+
+```{r}
+# Visualizing the whole data
+pacman::p_load(naniar)
+
+vis_miss(as.data.frame(t(assay(data[[initial_assayName]]))), sort_miss = TRUE, show_perc_col = FALSE) +
+  labs(x = "Genes") +
+  theme(axis.text.x = element_blank())
+```
+
+###### Missing value visualization of features with missing data
+
+```{r}
+
+col_with_missingval <- as.data.frame(t(assay(data[[initial_assayName]]))) %>%
+  select(where(~ any(is.na(.))))
+
+vis_miss(col_with_missingval, sort_miss = TRUE, show_perc = FALSE) +
+  labs(x = "Genes") +
+  theme(axis.text.x = element_text(face="bold", size = 7, angle = 90))
+```
+:::
+
+#### Missing data filterting
+
+Filtering features having more than 10% missing data.
+
+```{r}
+
+# removing missing value more than 10%, can be changed accordingly
+
+NA_filtered_assayName <- paste0("NAfiltered_", initial_assayName)
+
+data <- addAssay(data,
+
+                 filterNA(
+
+                   data[[initial_assayName]],
+
+                   pNA = 0.1
+
+                 ),
+
+                 name = NA_filtered_assayName)
+
+```
+
+#### Missing Data Imputation
+
+##### Packages needed
+
+```{r}
+pacman::p_load(limma, impute)
+```
+
+##### Log transformation for easy visualization of imputation
+
+```{r}
+log_NA_filtered_assayName <- paste0("log_",NA_filtered_assayName)
+data <- addAssay(data,
+                 logTransform(data[[NA_filtered_assayName]]),
+                 name = "log_NAfiltered_proteins")
+```
+
+##### Imputing missing values and visualization (modify later)
+
+```{r}
+#| eval: false
+source("R/02_QFeature_related functions.R")
+
+# fix the function
+visualize_imputation_density(data, 
+                             protein_column = NA_filtered_assayName, 
+                             imputation_methods = c("knn", "zero", "MinDet", "bpca"),
+                             colors = c("black", "red", "blue", "steelblue", "orange"),
+                             legend_position = "topright")
+
+```
+
+##### Imputation with imputation_algorithm mentioned in parameters
+
+```{r}
+
+imputed_NA_filtered_assayName <- paste0("imputed_", NA_filtered_assayName)
+data <- addAssay(data,
+                 impute(data[[NA_filtered_assayName]], method = tolower(imputation_algo)),
+                 name = imputed_NA_filtered_assayName
+)
+
+```
+
+### Log transformation
+
+```{r}
+
+log_imputed_NA_filtered_assayName <- paste0("log2_", imputed_NA_filtered_assayName)
+
+data <- addAssay(data,
+                 logTransform(data[[imputed_NA_filtered_assayName]], base = 2),
+                 name = log_imputed_NA_filtered_assayName)
+```
+
+### Normalisation
+
+##### Visualization of different \`normalisation\`
+
+##### Applying \`normalisation\` to our dataset
+
+```{r}
+
+norm_log_imputed_NA_filtered_assayName <- paste0("norm", log_imputed_NA_filtered_assayName)
+
+data <- addAssay(data,
+                 normalize(data[[log_imputed_NA_filtered_assayName]],
+                           method = normalization_algo),
+                 name = norm_log_imputed_NA_filtered_assayName)
+```
+
+## Exploratory Analysis
+
+## Statistical Analysis

@@ -1,0 +1,13 @@
+project:
+  title: "down stream proteomics workflow for meat science"
+  # output-dir: docs
+    
+execute: 
+  cache: true
+  
+editor: visual
+
+toc: true
+toc-depth: 4
+toc-title: "On this page"
+number-sections: true
