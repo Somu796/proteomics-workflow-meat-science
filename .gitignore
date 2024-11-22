@@ -5,12 +5,14 @@
 # Session Data files
 .RData
 .RDataTmp
+.csv
 
 # User-specific files
 .Ruserdata
 
 # Example code in package build process
 *-Ex.R
+temp.R
 
 # Output files from R CMD build
 /*.tar.gz
