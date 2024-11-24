@@ -749,6 +749,7 @@ rmarkdown::paged_table(EFS_data)
 
 ### Performing feature selection
 ```{r}
+#| message: false
 efs <- ensemble_fs(data = EFS_data, classnumber = 1,
                    NA_threshold = 0.2, cor_threshold = 0.7,
                    runs = 100) #, selection = rep(TRUE, 8)
@@ -759,6 +760,24 @@ efs <- ensemble_fs(data = EFS_data, classnumber = 1,
 
 #### cumulative barplot
 ```{r}
+source("R/05_EFS.R")
+barplot_efs(efs)
+
+```
+#### ROC Curve for model evaluation
+```{r}
+#| eval: false
+#| echo: false
+
+# Create a ROC Curve based on the output from efs
+eval_tests <- efs_eval(data = EFS_data, efs_table = efs,
+                       file_name = "docs/Horn",
+                       classnumber = 1, NA_threshold = 0.2,
+                       logreg = TRUE,
+                       permutation = TRUE, p_num = 100,
+                       variances = TRUE, jaccard = TRUE,
+                       bs_num = 100, bs_percentage = 0.9)
+
 
 ```
 
