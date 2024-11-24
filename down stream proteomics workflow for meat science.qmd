@@ -11,8 +11,6 @@ execute:
   cache: true
 ---
 
-### Naming Idea
-
 [![](images/Summarized%20Experiment.png){fig-align="center" width="400"}](https://bioconductor.org/packages/release/bioc/vignettes/SummarizedExperiment/inst/doc/SummarizedExperiment.html)
 
 ## Parameters
@@ -41,6 +39,7 @@ treatmen2_ref <- ""
  
 # normalisation techniques
 normalization_algo <- "center.median" #sum, max, center.mean, center.median, div.mean, div.median, diff.median, quantiles, quantiles.robust, vsn
+
 ```
 
 ## Importing Data
@@ -110,7 +109,7 @@ s_data <- read.csv(s_data_path) %>%
 
 ```{r}
 
-pacman::p_load(BiocManager) # will go to global environment
+pacman::p_load(BiocManager, BiocStyle) # will go to global environment
 pacman::p_load(QFeatures)
 
 # creating assayData
@@ -288,7 +287,7 @@ pacman::p_load(limma, impute)
 log_NA_filtered_assayName <- paste0("log_",NA_filtered_assayName)
 data <- addAssay(data,
                  logTransform(data[[NA_filtered_assayName]]),
-                 name = "log_NAfiltered_proteins")
+                 name = log_NA_filtered_assayName)
 ```
 
 ##### Imputing missing values and visualization (modify later)
@@ -347,4 +346,425 @@ data <- addAssay(data,
 
 ## Exploratory Analysis
 
+### Packages
+
+```{r}
+pacman::p_load(
+  ggplot2, 
+  # plotly, # for interactive plotting
+  glue,
+  gridExtra
+)
+source("R/03_getDimensionalReduction.R")
+
+```
+
+### Visualization
+
+```{r}
+# PCA
+df_dimensionaReduction <- data[[norm_log_imputed_NA_filtered_assayName]] %>% 
+  assay() %>%
+  t()
+
+sample_dimensionaReduction <- data[[norm_log_imputed_NA_filtered_assayName]] %>%
+  colData() %>% 
+  assay() %>% 
+  as.data.frame()
+
+labels <- sample_dimensionaReduction %>% select(- "quantCols")
+
+```
+
+::: panel-tabset
+#### PCA
+
+```{r}
+# Defining PCs to plot 
+
+x = 1 # PC1
+y = 2 # PC2
+model = "pca"
+
+# Model building 
+pca_model <- prcomp(df_dimensionaReduction, scale. = TRUE) 
+
+# Extracting PCs 
+pca_data <- as.data.frame(pca_model$x)
+
+# Calculating explained variance 
+explained_variance <- pca_model$sdev^2 / sum(pca_model$sdev^2)
+explained_variance <- round(explained_variance * 100, 2)
+
+# Preparing Scree Plot
+
+scree_plot_data <- data.frame(
+  PC_component = paste0('PC ', 1: nrow(df_dimensionaReduction)), 
+  explained_variance = cumsum(explained_variance)
+) # changed: nrow(metabo_data)
+
+components_to_show = 10
+
+scree_plot <- generate_pca_scree_plot(scree_plot_data, components_to_show)
+
+# preparing plot in a list t be plotted
+plot_list <- list()
+plot_list[["scree_plot"]] <- scree_plot
+
+for (label in colnames(labels)) {
+  assign(paste0("fig_pca_Plot_", label), 
+         generate_dimension_reduction_plot(
+           model, 
+           x, 
+           y, 
+           pca_data, 
+           label, 
+           labels, 
+           explained_variance = NULL))
+  
+  plot_list[[paste0("fig_pca_Plot_", label)]] <- get(paste0("fig_pca_Plot_", label))
+}
+
+suppressWarnings({
+  n <- dim(matrix(1:(ncol(sample_dimensionaReduction)), nrow = 2))[2]
+  p <- dim(matrix(1:(ncol(sample_dimensionaReduction)), nrow = 2))[1]
+})
+
+# You can also extract plots individually as plot_list$scree_plot, and save with ggsave()
+grid.arrange(grobs = plot_list, nrow = n, ncol = p) 
+
+```
+
+#### t-SNE
+
+```{r}
+#| message: false
+#| warning: false
+
+pacman::p_load(tsne) #Rtsne,
+
+# Defining parameters to plot 
+x = 1
+y = 2 
+perplexity = 20
+model = "tsne"
+
+# Model building 
+set.seed(0)
+tsne_model <- tsne(df_dimensionaReduction, initial_dims = 2)
+# tsne_model <- Rtsne(df, perplexity = perplexity, pca_scale = TRUE) # Alternative
+
+# Extracting tSNE components 
+tsne_data <- data.frame(tsne_model)
+# tsne_data <- as.data.frame(tsne_model$Y) # Alternative
+
+rownames(tsne_data) <- rownames(df_dimensionaReduction)
+
+
+# preparing tSNE plots 
+plot_list <- list() 
+for (label in colnames(labels)) {
+  assign(paste0("fig_tsne_Plot_", label), 
+         generate_dimension_reduction_plot(
+           model, 
+           x, 
+           y, 
+           tsne_data, 
+           label, 
+           labels, 
+           explained_variance = NULL))
+  
+  plot_list[[paste0("fig_tsne_Plot_", label)]] <- get(paste0("fig_tsne_Plot_", label))
+}
+
+suppressWarnings({
+  n <- dim(matrix(1:(ncol(sample_dimensionaReduction)-1), nrow = 2))[2]
+  p <- dim(matrix(1:(ncol(sample_dimensionaReduction)-1), nrow = 2))[1]
+})
+
+grid.arrange(grobs = plot_list, nrow = n, ncol = p) 
+
+```
+
+#### UMAP
+
+```{r}
+pacman::p_load(umap)
+
+# Defining parameters to plot 
+x = 1
+y = 2 
+model = "umap"
+
+# Model building  
+set.seed(0)
+umap_model <- umap(df_dimensionaReduction, n_components = 2, random_state = 15)
+
+# Extracting UMAP components
+umap_data <- data.frame(umap_model[["layout"]]) 
+
+# preparing UMAP plots 
+plot_list <- list()
+
+for (label in colnames(labels)) {
+  assign(paste0("fig_umap_Plot_", label), 
+         generate_dimension_reduction_plot(
+           model, 
+           x, 
+           y, 
+           umap_data, 
+           label, 
+           labels, 
+           explained_variance = NULL))
+  
+  plot_list[[paste0("fig_umap_Plot_", label)]] <- get(paste0("fig_umap_Plot_", label))
+}
+
+# Automating the grids for plottig
+suppressWarnings({
+  n <- dim(matrix(1:(ncol(sample_dimensionaReduction)-1), nrow = 2))[2]
+  p <- dim(matrix(1:(ncol(sample_dimensionaReduction)-1), nrow = 2))[1]
+})
+
+grid.arrange(grobs = plot_list, nrow = n, ncol = p) 
+
+```
+:::
+
 ## Statistical Analysis
+
+### LIMMA Analysis
+
+```{r}
+#| eval: false
+
+pacman::p_load(limma, tidyverse)
+source("R/04_limma.R")
+# parameters
+multiple_testing_adjusting_method <- "none" # possible methods: "holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none", check p.adjust.methods for more.
+
+# Importing the numeric data and corresponding sample_data for Differential Expression Analysis
+assay_data <- assay(data[[norm_log_imputed_NA_filtered_assayName]])
+sample_data <- colData(data)[, -1]
+
+# Converting character columns into a singular column
+if(all(sapply(sample_data, is.character))) {
+  # Collapse columns into a new column if all are character type
+  sample_data$combined <- apply(sample_data, 1, function(row) paste(row, collapse = "_and_"))
+  sample_data$combined <- factor(sample_data$combined)
+} else {
+  stop("Not all columns are character types!")
+}
+
+# Creating a design matrix
+design <- model.matrix(~ 0 + combined, data = sample_data)
+colnames(design) <- gsub("combined", "", colnames(design))
+
+# fitting the model
+fit <- lmFit(assay_data, design)
+print(colnames(design))
+
+# creating contrasts
+custom_contrasts <- c(
+  Stress_vs_NoStress = "(Stress_and_Lipid_VitE_PlantExt + Stress_and_Lipid_VitE + Stress_and_Lipid)/3 - (NoStress_and_Lipid + NoStress_and_Lipid_VitE + NoStress_and_Lipid_VitE_PlantExt)/3",
+  Lipid_VitE_vs_Lipid_NoStress = "NoStress_and_Lipid_VitE - NoStress_and_Lipid",
+  Lipid_VitE_PlantExt_vs_Lipid_NoStress = "NoStress_and_Lipid_VitE_PlantExt - NoStress_and_Lipid",
+  Lipid_VitE_PlantExt_vs_Lipid_VitE_NoStress = "NoStress_and_Lipid_VitE_PlantExt - NoStress_and_Lipid_VitE",
+  Lipid_VitE_vs_Lipid_Stress = "Stress_and_Lipid_VitE - Stress_and_Lipid",
+  Lipid_VitE_PlantExt_vs_Lipid_Stress = "Stress_and_Lipid_VitE_PlantExt - Stress_and_Lipid",
+  Lipid_VitE_PlantExt_vs_Lipid_VitE_Stress = "Stress_and_Lipid_VitE_PlantExt - Stress_and_Lipid_VitE"
+)
+
+contrasts_group <- makeContrasts(contrasts=custom_contrasts,levels=design)
+
+fit_contrasts <- contrasts.fit(fit, contrasts_group)
+fit_contrasts_bayes <- eBayes(fit_contrasts)
+
+
+DAP_table <- getDAPlist(fit_contrasts_bayes, contrasts_group, information_DE = c("logFC","AveExpr", "P.Value","adj.P.Val"), multiple_testing_adjusting_method = "none")
+
+
+```
+```{r}
+#| eval: false
+#| echo: false
+
+## No need to run locally
+# this is because there is an issue in rendering the previous code chunk, however it works well in local
+save(DAP_table, file = "Data/DAP_table.RData")
+```
+
+```{r}
+#| echo: false
+## No need to run locally
+load("Data/DAP_table.RData")
+```
+
+### LIMMA Result Visualization
+
+::: {.panel-tabset .nav-pills}
+#### LIMMA Result Table
+
+```{r}
+pacman::p_load(reactable)
+
+feature_data <- rowData(data[[norm_log_imputed_NA_filtered_assayName]]) %>% as.data.frame()
+
+DAP_table_feature_data <- feature_data[, c(quantdata_key_column, "Gene_primary", "Protein_name")] %>%
+  right_join(
+    rownames_to_column((DAP_table),
+                       var = quantdata_key_column),
+    by = quantdata_key_column)
+
+rmarkdown::paged_table(DAP_table_feature_data)
+```
+
+#### Volcano Plot
+```{r}
+#| message: false
+# Volcano Plot for Stress vs No Stress
+
+pacman::p_load(ggplot2,
+               extrafont,
+               ggrepel,
+               glue,
+               ggpp)
+loadfonts(device = "win")
+source("R/04_limma.R")
+
+# use gg_table to include the gene names
+DAP_table_factor <- DAP_table_feature_data[, c("Gene_primary", "logFC_Stress_vs_NoStress", "adj.P.Val_Stress_vs_NoStress")]
+FactorLevel.1 <- "Stress"
+FactorLevel.2 <- "NoStress"
+legend_title = "pre-slaughter \nstress condition"
+
+
+getVolcanoPlot(DAP_table_factor, FactorLevel.1, FactorLevel.2, mrlimit = 1.2, legend_title = legend_title)
+
+
+```
+#### UpSet Plot
+
+```{r}
+#| message: false
+pacman::p_load(ggupset, grid)
+source("R/04_limma.R")
+
+# This is for differences between feeding regime given stress and no stress
+pValue_Limit= 0.05
+DAP_table_feature_interaction <- DAP_table_feature_data[, c(1:3, 8:ncol(DAP_table_feature_data))] %>% 
+  column_to_rownames(quantdata_key_column)
+
+colnames(DAP_table_feature_interaction) <- gsub("_vs_", "-", colnames(DAP_table_feature_interaction))
+
+# NOSTRESS DATA: data.frame for differences between feeding regime given no stress
+## column names having adj.P.Value and _NoStress is getting filtered
+col_names_nostress_df <- grepl(
+  "adj\\.P\\.Val.*_NoStress", 
+  colnames(DAP_table_feature_interaction)
+)
+nostress_df <- DAP_table_feature_interaction[, col_names_nostress_df]
+## the column names are getting clean
+colnames(nostress_df) <- gsub("adj.P.Val_|_NoStress", "", colnames(nostress_df))
+
+## creating column that to be plotted in upSet diagram
+no_of_comparison_col_nostress<- 1:ncol(nostress_df)
+
+for (i in 1: nrow(nostress_df)){
+  nostress_df$comparison[i] <- str_replace_all(
+    paste(
+      unlist(
+        colnames(nostress_df)[c(no_of_comparison_col_nostress)][nostress_df[i, no_of_comparison_col_nostress] <0.05]
+        ), collapse = "&")
+    , "_", "+")
+}
+
+## genes having none of the comparisons significant getting filtered
+upSet_data_nostress <- nostress_df %>% 
+  filter(comparison != "") %>% 
+  select(comparison) %>% 
+  table()
+
+# STRESS DATA: data.frame for differences between feeding regime given stress
+## column names having adj.P.Value and _Stress is getting filtered
+col_names_stress_df <- grepl(
+  "adj\\.P\\.Val.*_Stress", 
+  colnames(DAP_table_feature_interaction)
+)
+stress_df <- DAP_table_feature_interaction[, col_names_stress_df]
+## the column names are getting clean
+colnames(stress_df) <- gsub("adj.P.Val_|_Stress", "", colnames(stress_df))
+
+## creating column that to be plotted in upSet diagram
+no_of_comparison_col_stress <- 1:ncol(stress_df)
+for (i in 1: nrow(stress_df)){ #
+  stress_df$comparison[i] <- str_replace_all(
+    paste(
+      unlist(
+        colnames(stress_df)[c(no_of_comparison_col_stress)][stress_df[i,no_of_comparison_col_stress] <0.05]
+      ), collapse = "&"
+    ), "_", "+")
+}
+
+## genes having none of the comparisons significant getting filtered
+upSet_data_stress <- stress_df %>% 
+  filter(comparison != "") %>% 
+  select(comparison) %>% 
+  table()
+
+
+upset1 <- getUpSetPlot(upSet_data_nostress, title = "A)", fill_color = "#1F77B4")
+
+upset2 <- getUpSetPlot(upSet_data_stress, title = "B)", fill_color = "#FF7F0E")
+
+grid.arrange(grobs = list(upset1, upset2), ncol = 2)
+
+```
+:::
+
+## Ensemble Feature Selection
+
+`EFS` package only support target variables with two levels. Here we will perform the analysis  with factor `pre-slaughter stress condition` which has two levels a) limited stress (No Stress), b) additional stress (Stress). We will be using NA filtered and imputed columns.
+
+### Data Preparation
+```{r}
+pacman::p_load(EFS)
+
+# Preparing data for EFS
+EFS_data <- assay(data[[imputed_NA_filtered_assayName]]) %>% 
+  t() %>% 
+  as.data.frame() 
+sample_data <- colData(data)[, -1] %>% 
+  as.data.frame()
+
+EFS_data <- sample_data %>% 
+  select(Slaughter_Condition)%>% 
+  merge(EFS_data, by = 0) %>% 
+  column_to_rownames(var = "Row.names")
+
+EFS_data$Slaughter_Condition <- ifelse(EFS_data$Slaughter_Condition == "Stress", 1, 0)
+
+rmarkdown::paged_table(EFS_data)
+```
+
+### Performing feature selection
+```{r}
+efs <- ensemble_fs(data = EFS_data, classnumber = 1,
+                   NA_threshold = 0.2, cor_threshold = 0.7,
+                   runs = 100) #, selection = rep(TRUE, 8)
+
+```
+
+### Result Visualization
+
+#### cumulative barplot
+```{r}
+
+```
+
+
+<!-- ## Enrichment -->
+
+<!-- # KEGG and SPIA -->
+
+<!-- # GO Enrichment -->
